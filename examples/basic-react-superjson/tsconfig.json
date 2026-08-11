@@ -6,7 +6,7 @@
     "jsx": "react",
     "lib": ["dom", "esnext"],
     "module": "esnext",
-    "moduleResolution": "node16",
+    "moduleResolution": "bundler",
     "noEmit": true,
     "noFallthroughCasesInSwitch": true,
     "noUnusedLocals": true,
@@ -17,6 +17,6 @@
     "strict": true,
     "target": "esnext"
   },
-  "include": ["./*.ts", "./*.tsx"],
+  "include": ["./*.ts", "./*.tsx", "./*.mts"],
   "exclude": ["node_modules"]
 }
