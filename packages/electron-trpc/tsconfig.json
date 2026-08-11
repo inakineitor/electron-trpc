@@ -15,6 +15,6 @@
     "strict": true,
     "target": "esnext"
   },
-  "include": ["src/main/*.ts", "src/main/*.mts", "src/renderer/*.ts", "src/renderer/*.mts"],
+  "include": ["src/main/*.ts", "src/renderer/*.ts"],
   "exclude": ["node_modules"]
 }

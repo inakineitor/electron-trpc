@@ -7,13 +7,9 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'electron-trpc',
-      social: [
-        {
-          icon: 'github',
-          label: 'GitHub',
-          href: 'https://github.com/inakineitor/electron-trpc',
-        },
-      ],
+      social: {
+        github: 'https://github.com/jsonnull/electron-trpc',
+      },
     }),
   ],
 });
