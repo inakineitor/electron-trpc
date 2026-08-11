@@ -14,7 +14,8 @@ type Awaitable<T> = T | Promise<T>;
 
 const getInternalId = (event: IpcMainEvent, request: ETRPCRequest) => {
   const messageId = request.method === 'request' ? request.operation.id : request.id;
-  return `${event.sender.id}-${event.senderFrame.routingId}:${messageId}`;
+  const frameRoutingId = event.senderFrame?.routingId ?? event.frameId;
+  return `${event.sender.id}-${frameRoutingId}:${messageId}`;
 };
 
 class IPCHandler<TRouter extends AnyRouter> {
@@ -87,14 +88,15 @@ class IPCHandler<TRouter extends AnyRouter> {
     win.webContents.on('did-start-navigation', ({ isSameDocument, frame }) => {
       // Check if it's a hard navigation
       if (!isSameDocument) {
+        const frameRoutingId = frame?.routingId;
         debug(
           'Handling hard navigation event',
           `webContentsId: ${webContentsId}`,
-          `frameRoutingId: ${frame.routingId}`
+          `frameRoutingId: ${frameRoutingId ?? 'all'}`
         );
         this.#cleanUpSubscriptions({
           webContentsId: webContentsId,
-          frameRoutingId: frame.routingId,
+          frameRoutingId,
         });
       }
     });
