@@ -10,7 +10,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        node: ['22.12.0', '24.x']
+        node: ['22.13.0', '24.x']
         os: [ubuntu-latest]
 
     steps:
@@ -41,7 +41,9 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - name: Resolve Electron binary
-        run: echo "PLAYWRIGHT_ELECTRON_PATH=$(pnpm --filter electron-trpc exec node -e 'console.log(require("electron"))')" >> "$GITHUB_ENV"
+        run: |
+          electron_path="$(pnpm --filter electron-trpc exec node -e 'console.log(require("electron"))' | tail -n 1)"
+          echo "PLAYWRIGHT_ELECTRON_PATH=$electron_path" >> "$GITHUB_ENV"
       - name: Install Playwright runtime dependencies
         run: pnpm exec playwright install-deps
       - run: pnpm build
