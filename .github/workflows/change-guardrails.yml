@@ -1,0 +1,26 @@
+name: Change Guardrails
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  conventional-title:
+    name: Validate PR title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Conventional Commit format
+        shell: bash
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9][a-z0-9._/@-]*\))?(!)?: [a-z][a-z0-9 .()/_-]*$'
+
+          if [[ ! "$PR_TITLE" =~ $pattern ]]; then
+            echo "::error title=Pull request title must use Conventional Commits::$PR_TITLE"
+            echo "Expected: type(optional-scope): lowercase subject"
+            exit 1
+          fi
