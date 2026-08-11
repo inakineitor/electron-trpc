@@ -19,14 +19,14 @@
   ],
   "exports": {
     "./main": {
+      "types": "./dist/main.d.ts",
       "require": "./dist/main.cjs",
-      "import": "./dist/main.mjs",
-      "types": "./dist/main.d.ts"
+      "import": "./dist/main.mjs"
     },
     "./renderer": {
+      "types": "./dist/renderer.d.ts",
       "require": "./dist/renderer.cjs",
-      "import": "./dist/renderer.mjs",
-      "types": "./dist/renderer.d.ts"
+      "import": "./dist/renderer.mjs"
     }
   },
   "author": "Jason Nall <jsonnull@gmail.com>",
@@ -40,7 +40,7 @@
   ],
   "scripts": {
     "build": "tsc && vite build -c src/main/vite.config.mts && vite build -c src/renderer/vite.config.mts && pnpm build:types",
-    "build:types": "dts-bundle-generator --config ./dts-bundle-generator.config.ts && pnpm run copy:types",
+    "build:types": "tsc -p tsconfig.types.json && pnpm run copy:types",
     "copy:readme": "cp ../../README.md ./",
     "copy:types": "cp dist/main.d.ts dist/renderer.d.ts ./",
     "test": "vitest -c vitest.config.mts",
@@ -57,11 +57,11 @@
     "@types/node": "^24.13.3",
     "@vitest/coverage-v8": "^4.1.10",
     "builtin-modules": "^5.3.0",
-    "dts-bundle-generator": "9.5.1",
     "electron": "^43.3.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "superjson": "^2.2.6",
+    "typescript": "^7.0.2",
     "vite": "^8.2.1",
     "vitest": "^4.1.10",
     "zod": "^3.23.6"

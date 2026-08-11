@@ -6,7 +6,7 @@
     "jsx": "react",
     "lib": ["dom", "esnext"],
     "module": "esnext",
-    "moduleResolution": "node16",
+    "moduleResolution": "bundler",
     "noEmit": true,
     "noFallthroughCasesInSwitch": true,
     "noUnusedLocals": true,

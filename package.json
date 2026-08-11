@@ -22,7 +22,7 @@
     "@changesets/cli": "^2.31.1",
     "@playwright/test": "^1.62.1",
     "prettier": "^3.9.6",
-    "typescript": "^5.4.5"
+    "typescript": "^7.0.2"
   },
   "engines": {
     "node": ">=22.13.0",
