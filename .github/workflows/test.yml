@@ -44,8 +44,6 @@ jobs:
         run: |
           electron_path="$(pnpm --filter electron-trpc exec node -e 'console.log(require("electron"))' | tail -n 1)"
           echo "PLAYWRIGHT_ELECTRON_PATH=$electron_path" >> "$GITHUB_ENV"
-      - name: Install Playwright runtime dependencies
-        run: pnpm exec playwright install-deps
       - run: pnpm build
       - run: xvfb-run --auto-servernum -- pnpm test:e2e
         env:
