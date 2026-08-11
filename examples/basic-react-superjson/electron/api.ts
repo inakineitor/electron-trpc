@@ -1,7 +1,6 @@
 import z from 'zod';
 import { initTRPC } from '@trpc/server';
-import { observable } from '@trpc/server/observable';
-import { EventEmitter } from 'events';
+import { EventEmitter, on } from 'node:events';
 import superjson from 'superjson';
 
 const ee = new EventEmitter();
@@ -17,18 +16,12 @@ export const router = t.router({
       text: `Hello ${input.name}` as const,
     };
   }),
-  subscription: t.procedure.subscription(() => {
-    return observable((emit) => {
-      function onGreet(text: string) {
-        emit.next({ text });
-      }
-
-      ee.on('greeting', onGreet);
-
-      return () => {
-        ee.off('greeting', onGreet);
-      };
-    });
+  shout: t.procedure.input(z.string()).mutation(({ input }) => input.toUpperCase()),
+  subscription: t.procedure.subscription(async function* ({ signal }) {
+    yield { text: 'Subscription ready' };
+    for await (const [text] of on(ee, 'greeting', { signal })) {
+      yield { text: text as string };
+    }
   }),
 });
 

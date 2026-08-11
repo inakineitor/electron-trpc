@@ -12,9 +12,10 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "resolveJsonModule": true,
+    "skipLibCheck": true,
     "strict": true,
     "target": "esnext"
   },
-  "include": ["src/main/*.ts", "src/renderer/*.ts"],
+  "include": ["src/main/*.ts", "src/main/*.mts", "src/renderer/*.ts", "src/renderer/*.mts"],
   "exclude": ["node_modules"]
 }

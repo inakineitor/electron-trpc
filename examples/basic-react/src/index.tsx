@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import ReactDom from 'react-dom';
+import { createRoot } from 'react-dom/client';
 import { ipcLink } from 'electron-trpc/renderer';
 import { createTRPCReact } from '@trpc/react-query';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -26,9 +26,11 @@ function App() {
 
 function HelloElectron() {
   const { data } = trpcReact.greeting.useQuery({ name: 'Electron' });
+  const [subscriptionText, setSubscriptionText] = useState('Connecting');
+  const shout = trpcReact.shout.useMutation();
   trpcReact.subscription.useSubscription(undefined, {
     onData: (data) => {
-      console.log(data);
+      setSubscriptionText(data.text);
     },
   });
 
@@ -36,7 +38,18 @@ function HelloElectron() {
     return null;
   }
 
-  return <div data-testid="greeting">{data.text}</div>;
+  return (
+    <main>
+      <div data-testid="greeting">{data.text}</div>
+      <div data-testid="subscription">{subscriptionText}</div>
+      <button onClick={() => shout.mutate('mutation')}>Run mutation</button>
+      <div data-testid="mutation">{shout.data}</div>
+    </main>
+  );
 }
 
-ReactDom.render(<App />, document.getElementById('react-root'));
+const rootElement = document.getElementById('react-root');
+if (!rootElement) {
+  throw new Error('Could not find the React root element');
+}
+createRoot(rootElement).render(<App />);

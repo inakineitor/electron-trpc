@@ -1,17 +1,14 @@
-import { _electron as electron, test, expect } from '@playwright/test';
+import { _electron as electron, expect, test } from '@playwright/test';
 import path from 'node:path';
 
-test('Hello Electron', async () => {
+test('supports SuperJSON over Electron IPC', async () => {
   const electronApp = await electron.launch({
-    args: [path.resolve(process.cwd(), 'examples/basic-react')],
+    args: [path.resolve(process.cwd(), 'examples/basic-react-superjson')],
     executablePath: process.env.PLAYWRIGHT_ELECTRON_PATH ?? undefined,
   });
 
   const window = await electronApp.firstWindow();
-  expect(await window.title()).toBe('Hello from Electron renderer!');
-
-  const response = await window.textContent('[data-testid="greeting"]');
-  expect(response).toBe('Hello Electron');
+  await expect(window.locator('[data-testid="greeting"]')).toHaveText('Hello Electron');
   await expect(window.locator('[data-testid="subscription"]')).toHaveText('Subscription ready');
   await window.getByRole('button', { name: 'Run mutation' }).click();
   await expect(window.locator('[data-testid="mutation"]')).toHaveText('MUTATION');

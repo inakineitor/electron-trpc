@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { createTRPCProxyClient } from '@trpc/client';
+import { createTRPCClient } from '@trpc/client';
 import { initTRPC } from '@trpc/server';
 import type { TRPCResponseMessage } from '@trpc/server/rpc';
 import z from 'zod';
@@ -11,20 +11,34 @@ const t = initTRPC.create();
 const router = t.router({
   testQuery: t.procedure.query(() => 'query success'),
   testMutation: t.procedure.input(z.string()).mutation(() => 'mutation success'),
-  testSubscription: t.procedure.subscription(() => {
-    return {
-      next: () => {},
-      complete: () => {},
-    };
+  testSubscription: t.procedure.subscription(async function* () {
+    yield 'subscription success';
   }),
-  testInputs: t.procedure
+});
+
+const superjsonT = initTRPC.create({ transformer: superjson });
+const superjsonRouter = superjsonT.router({
+  testInputs: superjsonT.procedure
     .input(z.object({ str: z.string(), date: z.date(), bigint: z.bigint() }))
-    .query((input) => {
+    .query(({ input }) => {
       return input;
     }),
 });
 
+const customTransformer = {
+  serialize: (input: unknown) => JSON.stringify(input),
+  deserialize: (input: unknown) => JSON.parse(input as string),
+};
+const customT = initTRPC.create({ transformer: customTransformer });
+const customRouter = customT.router({
+  testInputs: customT.procedure
+    .input(z.object({ str: z.string(), date: z.date() }))
+    .query(({ input }) => input),
+});
+
 type Router = typeof router;
+type SuperjsonRouter = typeof superjsonRouter;
+type CustomRouter = typeof customRouter;
 
 const electronTRPC: RendererGlobalElectronTRPC = {} as any;
 let handlers: ((message: TRPCResponseMessage) => void)[] = [];
@@ -33,6 +47,7 @@ beforeEach(() => {
   electronTRPC.sendMessage = vi.fn();
   electronTRPC.onMessage = vi.fn().mockImplementation((handler) => {
     handlers.push(handler);
+    return () => {};
   });
 });
 
@@ -40,15 +55,15 @@ vi.stubGlobal('electronTRPC', electronTRPC);
 
 describe('ipcLink', () => {
   test('can create ipcLink', () => {
-    expect(() => createTRPCProxyClient({ links: [ipcLink()] })).not.toThrow();
+    expect(() => createTRPCClient({ links: [ipcLink()] })).not.toThrow();
   });
 
   describe('operations', () => {
-    let client: ReturnType<typeof createTRPCProxyClient<Router>>;
+    let client: ReturnType<typeof createTRPCClient<Router>>;
     const mock = vi.mocked(electronTRPC);
 
     beforeEach(() => {
-      client = createTRPCProxyClient({ links: [ipcLink()] });
+      client = createTRPCClient({ links: [ipcLink()] });
     });
 
     test('routes query to/from', async () => {
@@ -169,7 +184,7 @@ describe('ipcLink', () => {
       expect(mock.sendMessage.mock.calls[1]).toEqual([
         {
           id: 1,
-          method: 'subscription.stop',
+          method: 'operation.stop',
         },
       ]);
 
@@ -181,6 +196,48 @@ describe('ipcLink', () => {
       respond('test 4');
 
       expect(subscriptionResponse).toHaveBeenCalledTimes(3);
+    });
+
+    test('forwards subscription lifecycle and connection state', () => {
+      const onComplete = vi.fn();
+      const onConnectionStateChange = vi.fn();
+      const onStarted = vi.fn();
+      const onStopped = vi.fn();
+
+      client.testSubscription.subscribe(undefined, {
+        onComplete,
+        onConnectionStateChange,
+        onStarted,
+        onStopped,
+      });
+
+      handlers[0]({ id: 1, result: { type: 'started' } });
+      handlers[0]({ id: 1, result: { type: 'stopped' } });
+
+      expect(onStarted).toHaveBeenCalledOnce();
+      expect(onStopped).toHaveBeenCalledOnce();
+      expect(onComplete).toHaveBeenCalledOnce();
+      expect(onConnectionStateChange.mock.calls.map(([state]) => state.state)).toEqual([
+        'connecting',
+        'pending',
+        'idle',
+      ]);
+      expect(mock.sendMessage).toHaveBeenCalledOnce();
+    });
+
+    test('propagates AbortSignal cancellation for queries', async () => {
+      const abortController = new AbortController();
+      const query = client.testQuery.query(undefined, {
+        signal: abortController.signal,
+      });
+
+      abortController.abort();
+      await expect(query).rejects.toBeInstanceOf(Error);
+
+      expect(mock.sendMessage).toHaveBeenNthCalledWith(2, {
+        id: 1,
+        method: 'operation.stop',
+      });
     });
 
     test('interlaces responses', async () => {
@@ -225,9 +282,8 @@ describe('ipcLink', () => {
   });
 
   test('serializes inputs/outputs', async () => {
-    const client = createTRPCProxyClient<Router>({
-      transformer: superjson,
-      links: [ipcLink()],
+    const client = createTRPCClient<SuperjsonRouter>({
+      links: [ipcLink({ transformer: superjson })],
     });
 
     const mock = vi.mocked(electronTRPC);
@@ -270,12 +326,8 @@ describe('ipcLink', () => {
   });
 
   test('serializes inputs with custom transformer', async () => {
-    const client = createTRPCProxyClient<Router>({
-      transformer: {
-        serialize: (input) => JSON.stringify(input),
-        deserialize: (input) => JSON.parse(input),
-      },
-      links: [ipcLink()],
+    const client = createTRPCClient<CustomRouter>({
+      links: [ipcLink({ transformer: customTransformer })],
     });
 
     const mock = vi.mocked(electronTRPC);

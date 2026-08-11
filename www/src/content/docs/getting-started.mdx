@@ -31,10 +31,11 @@ createIPCHandler({ router, windows: [win] });
 `.trim();
 
 export const rendererCode = `
-import { createTRPCProxyClient } from '@trpc/client';
+import { createTRPCClient } from '@trpc/client';
 import { ipcLink } from 'electron-trpc/renderer';
+import type { AppRouter } from './api';
 
-export const client = createTRPCProxyClient({
+export const client = createTRPCClient<AppRouter>({
   links: [ipcLink()],
 });
 `.trim();
@@ -90,3 +91,33 @@ Windows you construct with the preload file and the IPC handler can reach the tR
 <Code lang="ts" title="renderer.ts" code={rendererCode} />
 
 To use a different client, follow the appropriate usage instructions in the tRPC docs, ensuring that you substitute any HTTP or websocket links with the `ipcLink`.
+
+### Subscriptions
+
+Use tRPC v11 async-generator subscriptions. The procedure's `signal` is aborted when the renderer cancels the operation, navigates, or closes.
+
+```ts
+import { on } from 'node:events';
+
+const onMessage = t.procedure.subscription(async function* ({ signal }) {
+  for await (const [message] of on(events, 'message', { signal })) {
+    yield message;
+  }
+});
+```
+
+Legacy Observable subscriptions are also accepted for migration compatibility.
+
+### Transformers
+
+Client transformers belong on the IPC link in tRPC v11:
+
+```ts
+import superjson from 'superjson';
+
+export const client = createTRPCClient<AppRouter>({
+  links: [ipcLink({ transformer: superjson })],
+});
+```
+
+The main-process router must be initialized with the same transformer.
