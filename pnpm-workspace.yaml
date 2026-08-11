@@ -2,6 +2,3 @@ packages:
   - 'examples/*'
   - 'packages/*'
   - 'www'
-allowBuilds:
-  esbuild: true
-  workerd: true
