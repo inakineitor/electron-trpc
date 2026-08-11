@@ -1,129 +1,233 @@
-import { callProcedure, TRPCError } from '@trpc/server';
-import type { AnyRouter, inferRouterContext } from '@trpc/server';
-import type { TRPCResponseMessage } from '@trpc/server/rpc';
-import type { IpcMainEvent } from 'electron';
-import { isObservable, Unsubscribable } from '@trpc/server/observable';
-import { transformTRPCResponse } from '@trpc/server/shared';
-import { getTRPCErrorFromUnknown } from './utils';
-import { CreateContextOptions } from './types';
-import { ELECTRON_TRPC_CHANNEL } from '../constants';
-import { ETRPCRequest } from '../types';
 import debugFactory from 'debug';
+import type { IpcMainEvent } from 'electron';
+import {
+  callProcedure as callTRPCProcedure,
+  getTRPCErrorFromUnknown,
+  getErrorShape as getTRPCErrorShape,
+  isAsyncIterable,
+  isTrackedEnvelope,
+  transformTRPCResponse,
+  TRPCError,
+  type AnyRouter as AnyTRPCRouter,
+  type inferRouterContext,
+  type ProcedureType as TRPCProcedureType,
+} from '@trpc/server/unstable-core-do-not-import';
+import { isObservable, observableToAsyncIterable } from '@trpc/server/observable';
+import type { TRPCResponseMessage, TRPCResultMessage } from '@trpc/server/rpc';
+import { ELECTRON_TRPC_CHANNEL } from '../constants';
+import type { ETRPCRequest } from '../types';
+import type { CreateContextOptions } from './types';
 
 const debug = debugFactory('electron-trpc:main:handleIPCMessage');
 
-export async function handleIPCMessage<TRouter extends AnyRouter>({
+type Awaitable<T> = T | Promise<T>;
+
+export interface IPCOperation {
+  abort: () => void;
+}
+
+export type IPCErrorHandlerOptions<TRouter extends AnyTRPCRouter> = {
+  ctx: inferRouterContext<TRouter> | undefined;
+  error: TRPCError;
+  event: IpcMainEvent;
+  input: unknown;
+  path: string | undefined;
+  type: TRPCProcedureType | 'unknown';
+};
+
+export type IPCErrorHandler<TRouter extends AnyTRPCRouter> = (
+  options: IPCErrorHandlerOptions<TRouter>
+) => void;
+
+interface HandleIPCMessageOptions<TRouter extends AnyTRPCRouter> {
+  createContext?: (options: CreateContextOptions) => Awaitable<inferRouterContext<TRouter>>;
+  event: IpcMainEvent;
+  internalId: string;
+  message: ETRPCRequest;
+  onError?: IPCErrorHandler<TRouter>;
+  operations: Map<string, IPCOperation>;
+  router: TRouter;
+}
+
+const waitForNext = async <T>(
+  iterator: AsyncIterator<T>,
+  signal: AbortSignal
+): Promise<IteratorResult<T> | 'aborted'> => {
+  if (signal.aborted) {
+    return 'aborted';
+  }
+
+  return new Promise((resolve, reject) => {
+    const handleAbort = () => resolve('aborted');
+    signal.addEventListener('abort', handleAbort, { once: true });
+
+    void iterator.next().then(
+      (value) => {
+        signal.removeEventListener('abort', handleAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', handleAbort);
+        reject(error);
+      }
+    );
+  });
+};
+
+export async function handleIPCMessage<TRouter extends AnyTRPCRouter>({
   router,
   createContext,
   internalId,
   message,
   event,
-  subscriptions,
-}: {
-  router: TRouter;
-  createContext?: (opts: CreateContextOptions) => Promise<inferRouterContext<TRouter>>;
-  internalId: string;
-  message: ETRPCRequest;
-  event: IpcMainEvent;
-  subscriptions: Map<string, Unsubscribable>;
-}) {
-  if (message.method === 'subscription.stop') {
-    const subscription = subscriptions.get(internalId);
-    if (!subscription) {
-      return;
-    }
-
-    subscription.unsubscribe();
-    subscriptions.delete(internalId);
+  onError,
+  operations,
+}: HandleIPCMessageOptions<TRouter>): Promise<void> {
+  if (message.method === 'operation.stop') {
+    operations.get(internalId)?.abort();
     return;
   }
 
   const { type, input: serializedInput, path, id } = message.operation;
-  const input = serializedInput
-    ? router._def._config.transformer.input.deserialize(serializedInput)
-    : undefined;
-
-  const ctx = (await createContext?.({ event })) ?? {};
+  const abortController = new AbortController();
+  let subscriptionStarted = false;
+  let ctx: inferRouterContext<TRouter> | undefined;
+  let input: unknown;
 
   const respond = (response: TRPCResponseMessage) => {
-    if (event.sender.isDestroyed()) return;
+    if (event.sender.isDestroyed()) {
+      return;
+    }
+
     event.reply(ELECTRON_TRPC_CHANNEL, transformTRPCResponse(router._def._config, response));
   };
 
+  const reportError = (cause: unknown) => {
+    const error = getTRPCErrorFromUnknown(cause);
+    onError?.({ ctx, error, event, input, path, type });
+    respond({
+      id,
+      error: getTRPCErrorShape({
+        config: router._def._config,
+        ctx,
+        error,
+        input,
+        path,
+        type,
+      }),
+    });
+  };
+
+  if (operations.has(internalId)) {
+    reportError(
+      new TRPCError({
+        code: 'BAD_REQUEST',
+        message: `Duplicate operation id ${id}`,
+      })
+    );
+    return;
+  }
+
+  operations.set(internalId, {
+    abort: () => abortController.abort(),
+  });
+
   try {
-    const result = await callProcedure({
+    input = router._def._config.transformer.input.deserialize(serializedInput);
+    ctx = (await createContext?.({ event })) ?? ({} as inferRouterContext<TRouter>);
+
+    const result = await callTRPCProcedure({
+      batchIndex: 0,
       ctx,
+      getRawInput: async () => input,
       path,
-      procedures: router._def.procedures,
-      rawInput: input,
+      router,
+      signal: abortController.signal,
       type,
     });
 
-    if (type !== 'subscription') {
-      respond({
-        id,
-        result: {
-          type: 'data',
-          data: result,
-        },
-      });
+    if (abortController.signal.aborted) {
       return;
-    } else {
-      if (!isObservable(result)) {
-        throw new TRPCError({
-          message: `Subscription ${path} did not return an observable`,
-          code: 'INTERNAL_SERVER_ERROR',
-        });
-      }
     }
 
-    const subscription = result.subscribe({
-      next(data) {
-        respond({
-          id,
-          result: {
+    const isIterableResult = isAsyncIterable(result) || isObservable(result);
+
+    if (type !== 'subscription') {
+      if (isIterableResult) {
+        throw new TRPCError({
+          code: 'UNSUPPORTED_MEDIA_TYPE',
+          message: `Cannot return an async iterable or observable from a ${type} procedure over Electron IPC`,
+        });
+      }
+
+      respond({ id, result: { type: 'data', data: result } });
+      return;
+    }
+
+    if (!isIterableResult) {
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: `Subscription ${path} did not return an async iterable or observable`,
+      });
+    }
+
+    const iterable = isObservable(result)
+      ? observableToAsyncIterable(result, abortController.signal)
+      : result;
+    const iterator = iterable[Symbol.asyncIterator]();
+
+    subscriptionStarted = true;
+    respond({ id, result: { type: 'started' } });
+
+    void (async () => {
+      try {
+        while (true) {
+          const next = await waitForNext(iterator, abortController.signal);
+          if (next === 'aborted' || next.done) {
+            break;
+          }
+
+          let responseResult: TRPCResultMessage<unknown>['result'] = {
             type: 'data',
-            data,
-          },
-        });
-      },
-      error(err) {
-        const error = getTRPCErrorFromUnknown(err);
-        respond({
-          id,
-          error: router.getErrorShape({
-            error,
-            type,
-            path,
-            input,
-            ctx,
-          }),
-        });
-      },
-      complete() {
-        respond({
-          id,
-          result: {
-            type: 'stopped',
-          },
-        });
-      },
-    });
+            data: next.value,
+          };
 
-    debug('Creating subscription', internalId);
-    subscriptions.set(internalId, subscription);
+          if (isTrackedEnvelope(next.value)) {
+            const [eventId, data] = next.value;
+            responseResult = {
+              type: 'data',
+              id: eventId,
+              data: { id: eventId, data },
+            };
+          }
+
+          respond({ id, result: responseResult });
+        }
+      } catch (cause) {
+        if (!abortController.signal.aborted) {
+          reportError(cause);
+        }
+      } finally {
+        try {
+          await iterator.return?.();
+        } catch (cause) {
+          if (!abortController.signal.aborted) {
+            reportError(cause);
+          }
+        }
+
+        respond({ id, result: { type: 'stopped' } });
+        operations.delete(internalId);
+        debug('Closed operation', internalId);
+      }
+    })();
   } catch (cause) {
-    const error: TRPCError = getTRPCErrorFromUnknown(cause);
-
-    return respond({
-      id,
-      error: router.getErrorShape({
-        error,
-        type,
-        path,
-        input,
-        ctx,
-      }),
-    });
+    if (!abortController.signal.aborted) {
+      reportError(cause);
+    }
+  } finally {
+    if (type !== 'subscription' || !subscriptionStarted) {
+      operations.delete(internalId);
+    }
   }
 }

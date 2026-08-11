@@ -19,7 +19,7 @@
 - Expose APIs from Electron's main process to one or more render processes.
 - Build fully type-safe IPC.
 - Secure alternative to opening servers on localhost.
-- Full support for queries, mutations, and subscriptions.
+- Full support for queries, mutations, and async iterable subscriptions.
 
 ## Installation
 
@@ -70,12 +70,44 @@ npm install --save electron-trpc
 3. When creating the client in the render process, use the `ipcLink` (instead of the HTTP or batch HTTP links):
 
    ```ts
-   import { createTRPCProxyClient } from '@trpc/client';
+   import { createTRPCClient } from '@trpc/client';
    import { ipcLink } from 'electron-trpc/renderer';
+   import type { AppRouter } from './api';
 
-   export const client = createTRPCProxyClient({
+   export const client = createTRPCClient<AppRouter>({
      links: [ipcLink()],
    });
    ```
 
 4. Now you can use the client in your render process as you normally would (e.g. using `@trpc/react`).
+
+## Subscriptions
+
+tRPC v11 subscriptions use async generators. The procedure receives an `AbortSignal` that is
+cancelled when its renderer unsubscribes, navigates, closes, or explicitly aborts the request.
+
+```ts
+import { on } from 'node:events';
+
+const onMessage = t.procedure.subscription(async function* ({ signal }) {
+  for await (const [message] of on(events, 'message', { signal })) {
+    yield message;
+  }
+});
+```
+
+Legacy tRPC Observable subscriptions remain supported at the transport boundary.
+
+## Transformers
+
+tRPC v11 configures the client transformer on the terminating link:
+
+```ts
+import superjson from 'superjson';
+
+const client = createTRPCClient<AppRouter>({
+  links: [ipcLink({ transformer: superjson })],
+});
+```
+
+Configure the same transformer when calling `initTRPC.create()` in the main process.

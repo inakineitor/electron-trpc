@@ -1,14 +1,14 @@
 /// <reference types="vitest" />
-import path from 'path';
+import path from 'node:path';
 import { defineConfig } from 'vite';
 
-module.exports = defineConfig({
+export default defineConfig({
   test: {
     coverage: {
       all: true,
       include: ['src/**/*'],
       reporter: ['text', 'cobertura', 'html'],
-      reportsDirectory: path.resolve(__dirname, './coverage/'),
+      reportsDirectory: path.resolve(import.meta.dirname, './coverage/'),
     },
   },
 });

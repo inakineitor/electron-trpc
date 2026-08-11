@@ -4,5 +4,6 @@ dist/
 dist-electron/
 docs/.vitepress/cache/
 coverage/
+test-results/
 packages/electron-trpc/renderer.d.ts
 packages/electron-trpc/main.d.ts
