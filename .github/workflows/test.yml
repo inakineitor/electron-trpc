@@ -10,12 +10,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        node: ['22.13.0', '24.x']
+        node: ['18.x']
         os: [ubuntu-latest]
 
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v2
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
@@ -29,22 +29,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        node: ['24.x']
+        node: ['18.x']
         os: [ubuntu-latest]
 
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v2
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
-      - name: Resolve Electron binary
-        run: |
-          electron_path="$(pnpm --filter electron-trpc exec node -e 'console.log(require("electron"))' | tail -n 1)"
-          echo "PLAYWRIGHT_ELECTRON_PATH=$electron_path" >> "$GITHUB_ENV"
       - run: pnpm build
       - run: xvfb-run --auto-servernum -- pnpm test:e2e
-        env:
-          ELECTRON_NO_SANDBOX: '1'
