@@ -39,13 +39,13 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc && vite build -c src/main/vite.config.ts && vite build -c src/renderer/vite.config.ts && corepack pnpm build:types",
-    "build:types": "dts-bundle-generator --config ./dts-bundle-generator.config.ts && corepack pnpm run copy:types",
+    "build": "tsc && vite build -c src/main/vite.config.ts && vite build -c src/renderer/vite.config.ts && pnpm build:types",
+    "build:types": "dts-bundle-generator --config ./dts-bundle-generator.config.ts && pnpm run copy:types",
     "copy:readme": "cp ../../README.md ./",
     "copy:types": "cp dist/main.d.ts dist/renderer.d.ts ./",
     "test": "vitest -c vitest.config.ts",
     "test:ci": "vitest run -c vitest.config.ts --coverage",
-    "prepublishOnly": "corepack pnpm copy:readme && corepack pnpm build",
+    "prepublishOnly": "pnpm copy:readme && pnpm build",
     "changeset": "changeset",
     "release": "changeset publish"
   },
