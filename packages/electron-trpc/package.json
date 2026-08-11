@@ -43,6 +43,7 @@
     "build:types": "tsc -p tsconfig.types.json && pnpm run copy:types",
     "copy:readme": "cp ../../README.md ./",
     "copy:types": "cp dist/main.d.ts dist/renderer.d.ts ./",
+    "prepare": "pnpm build",
     "test": "vitest -c vitest.config.mts",
     "test:ci": "pnpm typecheck && vitest run -c vitest.config.mts --coverage",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
